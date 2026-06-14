@@ -46,6 +46,45 @@ runs/<task-name>/
 
 Run artifacts are intentionally ignored by git because they can contain cookies, tokens, intranet URLs, request bodies, downloaded files, or business data.
 
+## Installation
+
+Yes, other Codex users can install this skill directly from this repository. Codex discovers skills from `$CODEX_HOME/skills`; when `CODEX_HOME` is unset, the default location is `~/.codex/skills`.
+
+Recommended macOS/Linux install:
+
+```bash
+CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
+
+git clone https://github.com/Jiegenglyu/EasySkill.git "$CODEX_HOME/easyskill"
+npm --prefix "$CODEX_HOME/easyskill" install
+
+mkdir -p "$CODEX_HOME/skills"
+ln -sfn "$CODEX_HOME/easyskill/api-replay-recorder" \
+  "$CODEX_HOME/skills/api-replay-recorder"
+```
+
+Restart Codex after installation. The skill should then be available as:
+
+```text
+$api-replay-recorder
+```
+
+Quick verification:
+
+```bash
+test -f "$CODEX_HOME/skills/api-replay-recorder/SKILL.md"
+node --check "$CODEX_HOME/easyskill/api-replay-recorder/scripts/human-record.mjs"
+```
+
+To update later:
+
+```bash
+git -C "$CODEX_HOME/easyskill" pull
+npm --prefix "$CODEX_HOME/easyskill" install
+```
+
+The symlink install keeps the repository layout intact, so the skill can find its bundled scripts while the Node dependency is installed once at the repository root.
+
 ## Usage
 
 Install dependencies:
@@ -53,6 +92,8 @@ Install dependencies:
 ```bash
 npm install
 ```
+
+The commands below assume the current working directory is the cloned `EasySkill` repository root.
 
 Record a human operation:
 
