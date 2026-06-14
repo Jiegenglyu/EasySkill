@@ -1,6 +1,6 @@
 ---
 name: api-replay-recorder
-description: Fake and preserve human browser operations by recording UI actions, page transitions, downloads, and network requests, then turning the trace into reusable pre-skill materials for a low-capability agent. Use when an agent must copy a human UI workflow on logged-in web apps, generate local artifacts for later skills such as data scraping, analysis, and reporting, and optionally compile the discovered workflow into deterministic API replay.
+description: Fake and preserve human browser operations by recording UI actions, page transitions, downloads, and network requests, then turning the trace into reusable pre-skill materials for a low-capability agent. Use when an agent must copy a human UI workflow on logged-in web apps, replay what the user did visually, generate local artifacts for later skills such as data scraping, analysis, and reporting, or compile the discovered workflow into deterministic API replay.
 ---
 
 # Fake Human UI Recorder
@@ -9,7 +9,12 @@ description: Fake and preserve human browser operations by recording UI actions,
 
 Use this skill as a pre-skill for copying human web operations. It records a real or agent-driven browser session, preserves the UI timeline and related API/download traffic, and produces compact local materials that a later full skill can use for tasks such as data scraping, data analysis, report generation, approval flows, exports, and batch operations.
 
-The main goal is not to finish the business task directly. The goal is to fake the human UI operation once, preserve enough evidence to replay or compile it, and keep a low-capability agent on a narrow state-machine path. Playwright discovers the operation and refreshes auth, scripts create compact artifacts, and optional replay code validates and executes the extracted operation.
+The main goal is not to finish the business task directly. The goal is to fake the human UI operation once, preserve enough evidence to replay or compile it, and keep a low-capability agent on a narrow state-machine path. Playwright discovers the operation and refreshes auth, scripts create compact artifacts, and replay uses one of two explicit modes:
+
+- **UI replay**: best-effort visual replay from `user-actions.jsonl` with recorded URLs, viewport sizes, and click coordinates. Use this when the user asks to "replay what I did" or wants to see the browser perform the same path once.
+- **API replay**: deterministic HTTP execution from `operation.recipe.json`. Use this for repeatable operations, batch work, exports, scraping, or later skills.
+
+Do not invent ad hoc Playwright replay scripts. Use `scripts/replay-ui.mjs` for visual replay, or write and run `operation.recipe.json` with `scripts/run-operation.mjs` for API replay.
 
 ## Agent Assumption
 
@@ -19,6 +24,7 @@ The main goal is not to finish the business task directly. The goal is to fake t
 - Prefer "choose one candidate from a ranked list" over "inspect all network traffic".
 - Prefer "fill these declared variables and run an operation recipe" over "write a custom replay program".
 - Stop and ask for a tighter state machine when the current UI path cannot be expressed with fixed selectors and assertions.
+- Treat "Interrupted" or a failed shell command as unknown until the command output proves the cause. Do not claim a permission failure when earlier commands with the same prefix already ran.
 
 ## Core Rules
 
@@ -58,6 +64,7 @@ runs/<task-name>/
   inputs.json               # user-specified variables for replay
   validation.json           # replay checks on 2-3 examples
   results.jsonl             # structured batch output
+  ui-replay-report.json     # best-effort visual replay report
   downloads/                # exported files
   screenshots/              # failure screenshots only
 ```
@@ -80,6 +87,8 @@ node api-replay-recorder/scripts/human-record.mjs \
   runs/export-report
 ```
 
+The recorder refuses to silently mix a new run with existing artifacts. If `runs/export-report` already contains recording files, it creates a timestamped sibling directory and prints the actual run directory. Use that printed directory for summarize, UI replay, and API replay commands. Pass `--append` only when intentionally continuing the same run.
+
 2. Tell the user to complete the exact operation once, for example choose filters and click Export.
 3. Wait while the script records `network.jsonl`, `user-actions.jsonl`, downloads, and `storage-state.json`.
 4. End recording only when the user explicitly ends the operation by pressing Enter in the terminal, or by sending SIGINT/SIGTERM to cancel and finalize local artifacts.
@@ -95,6 +104,26 @@ node api-replay-recorder/scripts/summarize-network.mjs \
 
 6. Use `uiTimeline` and `actionWindows` in `candidates.json` to map the user's click to the API request chain.
 7. Write `operation.recipe.json`, validate it, then execute it with `scripts/run-operation.mjs`.
+
+## UI Replay Workflow
+
+Use UI replay only to visibly repeat a captured browser path once. It is not a correctness proof and may click different content if the website changes, recommendations reorder, or coordinates no longer map to the same element.
+
+Run:
+
+```bash
+node api-replay-recorder/scripts/replay-ui.mjs \
+  runs/export-report
+```
+
+Useful flags:
+
+- `--headless`: run without a visible browser.
+- `--dry-run`: print the planned navigation and actions without opening the browser.
+- `--keep-open`: leave the browser open after replay for inspection.
+- `--step-delay-ms=1000`: set the delay between actions.
+
+After running, inspect `ui-replay-report.json`. If it reports skipped `ui.input` or `ui.change` actions, explain that raw input values were intentionally not stored and an API recipe or a tighter state machine is required.
 
 ## Recording Scope Boundary
 
@@ -240,7 +269,7 @@ Reject candidates that:
 
 ## Replay Workflow
 
-Use direct HTTP replay after operation validation:
+Use direct HTTP replay after operation validation. Do not use this workflow until `operation.recipe.json` exists and represents the selected API chain.
 
 1. Load auth from `storage-state.json` or a browser-refreshed session.
 2. Build requests from `operation.recipe.json`, replacing only declared input variables.
@@ -273,5 +302,6 @@ node api-replay-recorder/scripts/run-operation.mjs \
 - `scripts/human-record.mjs`: open a headed browser, let the user click manually, and record UI actions, API requests, downloads, and auth state.
 - `scripts/record-network.mjs`: import this helper into Playwright scripts to write structured API/download events and action markers to `network.jsonl`.
 - `scripts/summarize-network.mjs`: run this on `network.jsonl` and optional `user-actions.jsonl` to produce compact ranked operation candidates and UI-to-API timelines.
+- `scripts/replay-ui.mjs`: best-effort visual replay from `user-actions.jsonl`; use for "show me what I did" requests, not deterministic automation.
 - `scripts/run-operation.mjs`: execute `operation.recipe.json` with user inputs and local auth state.
 - `references/api-recipe.md`: read this before writing `operation.recipe.json` or a replay harness.

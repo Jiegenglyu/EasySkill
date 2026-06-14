@@ -6,6 +6,7 @@
   "scripts": {
     "record": "node api-replay-recorder/scripts/human-record.mjs",
     "summarize": "node api-replay-recorder/scripts/summarize-network.mjs",
+    "replay-ui": "node api-replay-recorder/scripts/replay-ui.mjs",
     "replay": "node api-replay-recorder/scripts/run-operation.mjs"
   },
   "dependencies": {

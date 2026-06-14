@@ -1,4 +1,4 @@
-import { createWriteStream, mkdirSync, writeFileSync } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { chromium } from "playwright";
 import { attachNetworkRecorder } from "./record-network.mjs";
@@ -10,8 +10,46 @@ if (!startUrl) {
   process.exit(2);
 }
 
-const runDir = resolve(runDirArg);
+const requestedRunDir = resolve(runDirArg);
 const headless = flags.includes("--headless");
+const append = flags.includes("--append");
+const artifactNames = [
+  "storage-state.json",
+  "session.json",
+  "network.jsonl",
+  "user-actions.jsonl",
+  "candidates.json",
+  "operation.recipe.json",
+  "inputs.json",
+  "validation.json",
+  "results.jsonl"
+];
+
+function hasRunArtifacts(directory) {
+  return artifactNames.some((name) => existsSync(join(directory, name)));
+}
+
+function timestampSuffix() {
+  return new Date().toISOString()
+    .replace(/\.\d{3}Z$/, "Z")
+    .replace(/[-:]/g, "")
+    .replace("T", "-")
+    .replace("Z", "");
+}
+
+function chooseRunDir(baseDir) {
+  if (append || !hasRunArtifacts(baseDir)) return baseDir;
+  const stem = `${baseDir}-${timestampSuffix()}`;
+  let candidate = stem;
+  let suffix = 2;
+  while (existsSync(candidate)) {
+    candidate = `${stem}-${suffix}`;
+    suffix += 1;
+  }
+  return candidate;
+}
+
+const runDir = chooseRunDir(requestedRunDir);
 mkdirSync(runDir, { recursive: true });
 mkdirSync(join(runDir, "downloads"), { recursive: true });
 
@@ -58,7 +96,11 @@ function installActionRecorder(context) {
     const send = (payload) => {
       window.__apiReplayRecordAction?.({
         ...payload,
-        url: location.href
+        url: location.href,
+        viewport: {
+          width: window.innerWidth,
+          height: window.innerHeight
+        }
       }).catch(() => {});
     };
 
@@ -171,6 +213,12 @@ await page.goto(startUrl, { waitUntil: "domcontentloaded" });
 
 console.log(`Recording: ${startUrl}`);
 console.log(`Run directory: ${runDir}`);
+if (runDir !== requestedRunDir) {
+  console.log(`Requested run directory already had artifacts. Created isolated run directory instead of appending: ${runDir}`);
+}
+if (append) {
+  console.log("Append mode enabled. Existing run artifacts may be mixed with this recording.");
+}
 console.log("Use the opened browser to complete the operation once. Press Enter here when finished.");
 
 const stopReason = await new Promise((resolveDone) => {
@@ -200,6 +248,7 @@ writeFileSync(
   join(runDir, "session.json"),
   `${JSON.stringify({
     startUrl,
+    requestedRunDir,
     runDir,
     startedAt: startedAt.toISOString(),
     endedAt: new Date().toISOString(),

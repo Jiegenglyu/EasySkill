@@ -24,8 +24,9 @@ The key idea is to fake the human UI workflow once, then stop asking an LLM to r
 2. Let the user complete one representative operation in the browser.
 3. Save local artifacts under `runs/<task-name>/`.
 4. Summarize the UI timeline and network traffic into operation candidates.
-5. Optionally create `operation.recipe.json` for deterministic API replay.
-6. Use the materials as input to a later full skill.
+5. Use `replay-ui.mjs` for a best-effort visual replay when the user wants to see the captured UI path again.
+6. Optionally create `operation.recipe.json` for deterministic API replay.
+7. Use the materials as input to a later full skill.
 
 Typical artifacts:
 
@@ -40,6 +41,7 @@ runs/<task-name>/
   inputs.json
   validation.json
   results.jsonl
+  ui-replay-report.json
   downloads/
   screenshots/
 ```
@@ -126,6 +128,7 @@ Quick verification:
 ```bash
 test -f ~/.easyskill/api-replay-recorder/SKILL.md
 node --check ~/.easyskill/api-replay-recorder/scripts/human-record.mjs
+node --check ~/.easyskill/api-replay-recorder/scripts/replay-ui.mjs
 ```
 
 To update later:
@@ -155,6 +158,8 @@ npm run record -- "https://internal.example.com/report" runs/export-report
 
 Use the opened browser to complete the target operation once. Press Enter in the terminal when the operation is finished.
 
+The recorder will not silently append to an existing run that already has artifacts. It creates a timestamped sibling directory and prints the actual run directory. Use that printed directory in later commands. Pass `--append` only when intentionally continuing the same run.
+
 Summarize the captured materials:
 
 ```bash
@@ -164,7 +169,15 @@ npm run summarize -- \
   runs/export-report/user-actions.jsonl
 ```
 
-Replay an extracted operation:
+Replay the visible UI path once from `user-actions.jsonl`:
+
+```bash
+npm run replay-ui -- runs/export-report
+```
+
+This is best-effort: it reuses recorded page URLs, viewport sizes, and click coordinates. It is useful for showing "what I did" once, but it is not a deterministic API replay.
+
+Replay an extracted API operation:
 
 ```bash
 npm run replay -- \
@@ -191,6 +204,7 @@ api-replay-recorder/
   scripts/human-record.mjs
   scripts/record-network.mjs
   scripts/summarize-network.mjs
+  scripts/replay-ui.mjs
   scripts/run-operation.mjs
 ```
 
