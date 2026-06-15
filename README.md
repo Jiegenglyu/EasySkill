@@ -16,7 +16,7 @@ This is not intended to be the final business skill. It is a pre-skill that copi
 - run analysis
 - generate a final report
 
-The key idea is to fake the human UI workflow once, then stop asking an LLM to repeatedly click around the browser. The recording produces artifacts that can be inspected, validated, replayed through the captured API, or compiled into a deterministic operation. Final API materials are produced only after the user explicitly confirms that the API replay result is correct.
+The key idea is to fake the human UI workflow once, then stop asking an LLM to repeatedly click around the browser. The recording captures evidence; it is not itself a stable automation. The missing middle layer is semantic compilation: observed UI/network events must become an operation spec that models business inputs, auth, runtime tokens, durable ids, state transitions, output contracts, and acceptance checks. Final API materials are produced only after the user explicitly confirms that the replay result is correct.
 
 ## Workflow
 
@@ -25,10 +25,12 @@ The key idea is to fake the human UI workflow once, then stop asking an LLM to r
 3. Save local artifacts under `runs/<task-name>/`.
 4. Summarize the UI timeline and network traffic into operation candidates.
 5. Use `replay-ui.mjs` only for best-effort visual inspection when the user wants to see the captured UI path again.
-6. Create `operation.recipe.draft.json` for deterministic API replay.
-7. Run API replay and show the non-secret result summary to the user.
-8. After explicit user confirmation, promote the draft recipe and produce final API materials.
-9. Use the materials as input to a later full skill.
+6. Create `operation.spec.json` to model the real operation mechanism.
+7. Create `replay-feasibility.json` to decide whether the generic runner fits or a specialized state-machine harness is required.
+8. If supported, create `operation.recipe.draft.json` for deterministic API replay and preflight it.
+9. Run replay and show the non-secret result summary to the user.
+10. After explicit user confirmation, promote the draft recipe and produce final API materials.
+11. Use the materials as input to a later full skill.
 
 Typical artifacts:
 
@@ -39,6 +41,8 @@ runs/<task-name>/
   network.jsonl
   user-actions.jsonl
   candidates.json
+  operation.spec.json
+  replay-feasibility.json
   operation.recipe.draft.json
   operation.recipe.json
   inputs.json
@@ -185,6 +189,10 @@ This is best-effort: it reuses recorded page URLs, viewport sizes, and click coo
 Replay an extracted API operation from a draft recipe:
 
 ```bash
+npm run validate-recipe -- \
+  runs/export-report/operation.recipe.draft.json \
+  runs/export-report/inputs.json
+
 npm run replay -- \
   runs/export-report/operation.recipe.draft.json \
   runs/export-report/inputs.json \
@@ -206,6 +214,8 @@ npm run finalize-api -- \
 - Preserve raw materials locally; expose only compact summaries to the agent.
 - Keep secrets out of chat, git, prompts, and final answers.
 - Prefer deterministic scripts, schemas, and state machines over open-ended browser control.
+- Treat recording as evidence capture. Compile evidence into a semantic operation spec before choosing a replay runtime.
+- Do not force every operation into the generic HTTP runner. Use runtime-fit checks to choose a recipe or a specialized state-machine harness.
 - Treat API replay as the correctness gate; UI replay is visual inspection only.
 - Require explicit user confirmation before promoting draft API materials to final API materials.
 - Treat generated artifacts as pre-skill evidence for a later complete workflow.
@@ -216,15 +226,17 @@ npm run finalize-api -- \
 api-replay-recorder/
   SKILL.md
   agents/openai.yaml
+  references/operation-spec.md
   references/api-recipe.md
   scripts/human-record.mjs
   scripts/record-network.mjs
   scripts/summarize-network.mjs
   scripts/replay-ui.mjs
+  scripts/validate-recipe.mjs
   scripts/run-operation.mjs
   scripts/finalize-api-materials.mjs
 ```
 
 ## Status
 
-Prototype. The recorder and replay path are implemented, but automatic recipe synthesis, full UI-vs-API equivalence checking, and robust failure recovery are still active research and engineering work.
+Prototype. The recorder and replay path are implemented, but automatic operation-spec synthesis, runtime selection, full UI-vs-API equivalence checking, and robust failure recovery are still active research and engineering work.

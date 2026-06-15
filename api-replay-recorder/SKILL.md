@@ -1,6 +1,6 @@
 ---
 name: api-replay-recorder
-description: Fake and preserve human browser operations by recording UI actions, page transitions, downloads, and network requests, then turning the trace into reusable pre-skill materials for a low-capability agent. Use when an agent must copy a human UI workflow on logged-in web apps, replay what the user did visually, generate local artifacts for later skills such as data scraping, analysis, and reporting, or compile the discovered workflow into deterministic API replay.
+description: Fake and preserve human browser operations by recording UI actions, page transitions, downloads, and network requests, then turning the trace into reusable pre-skill materials for a low-capability agent. Use when an agent must copy a human UI workflow on logged-in web apps, replay what the user did visually, generate local artifacts for later skills such as data scraping, analysis, and reporting, or compile the discovered workflow into semantic operation specs and deterministic API/state-machine replay with explicit runtime-fit and acceptance checks.
 ---
 
 # Fake Human UI Recorder
@@ -9,12 +9,18 @@ description: Fake and preserve human browser operations by recording UI actions,
 
 Use this skill as a pre-skill for copying human web operations. It records a real or agent-driven browser session, preserves the UI timeline and related API/download traffic, and produces compact local materials that a later full skill can use for tasks such as data scraping, data analysis, report generation, approval flows, exports, and batch operations.
 
-The main goal is not to finish the business task directly. The goal is to fake the human UI operation once, preserve enough evidence to replay or compile it, and keep a low-capability agent on a narrow state-machine path. Playwright discovers the operation and refreshes auth, scripts create compact artifacts, and replay uses two distinct meanings:
+The main goal is not to finish the business task directly. The goal is to fake the human UI operation once, preserve enough evidence to analyze the operation mechanism, and keep a low-capability agent on a narrow state-machine path. Playwright discovers the operation and refreshes auth, scripts create compact artifacts, and replay uses two distinct meanings:
 
 - **UI replay**: best-effort visual replay from `user-actions.jsonl` with recorded URLs, viewport sizes, and click coordinates. Use this only when the user asks to "show what I did" or wants to inspect the captured path. It is not an acceptance gate.
 - **API replay**: deterministic HTTP execution from `operation.recipe.draft.json`. Use this as the only correctness replay for repeatable operations, batch work, exports, scraping, or later skills.
 
-Do not invent ad hoc Playwright replay scripts. Use `scripts/replay-ui.mjs` for visual inspection only, or write and run `operation.recipe.draft.json` with `scripts/run-operation.mjs` for API replay. Produce final API materials only after the user explicitly confirms that the API replay result is correct.
+Recording captures phenomena; replay needs mechanism. Treat "recording complete" as evidence capture only, not as replayability, correctness, or task completion. The required bridge is:
+
+```text
+UI/network evidence -> operation.spec.json -> replay-feasibility.json -> runtime recipe or harness -> accepted replay
+```
+
+Do not invent ad hoc Playwright replay scripts. Use `scripts/replay-ui.mjs` for visual inspection only. For API replay, first write `operation.spec.json`, then compile it into `operation.recipe.draft.json` only if the generic runner can represent the mechanism. If not, keep the spec and build a narrow state-machine harness with explicit states, runtime values, assertions, and acceptance checks. Produce final API materials only after the user explicitly confirms that the replay result is correct.
 
 ## Agent Assumption
 
@@ -22,8 +28,9 @@ Do not invent ad hoc Playwright replay scripts. Use `scripts/replay-ui.mjs` for 
 - Make every important decision either deterministic or bounded by small enumerations.
 - Require scripts to create compact artifacts before the agent reasons over them.
 - Prefer "choose one candidate from a ranked list" over "inspect all network traffic".
-- Prefer "fill these declared variables and run an operation recipe" over "write a custom replay program".
+- Prefer "fill these declared variables and run an operation recipe" over "write a custom replay program" only after the semantic operation spec says the generic runner fits.
 - Stop and ask for a tighter state machine when the current UI path cannot be expressed with fixed selectors and assertions.
+- Stop the local patch loop after a preflight failure or two replay failures. Re-run operation analysis before changing more JSON.
 - Treat "Interrupted" or a failed shell command as unknown until the command output proves the cause. Do not claim a permission failure when earlier commands with the same prefix already ran.
 
 ## Core Rules
@@ -38,6 +45,8 @@ Do not invent ad hoc Playwright replay scripts. Use `scripts/replay-ui.mjs` for 
 - The required final output is a user-confirmed executable API material set plus a short invocation command, not just an endpoint guess.
 - Do not generate a final business skill from the recording. Produce durable pre-skill materials that another workflow can compose into a complete skill later.
 - Treat unconfirmed API chains as draft material. Do not present `operation.recipe.json` as final until API replay has run and the user has explicitly accepted the result.
+- Do not generalize from one successful business skill by copying its domain path. Generalize the structure: explicit path choice, business contracts, auth model, state transitions, failure branches, acceptance checks, and stable output model.
+- Do not treat raw network order as operation logic. Compile observed requests into a semantic operation spec before choosing a runtime.
 
 ## Material Requirements
 
@@ -47,6 +56,7 @@ Every recording must preserve enough local material to replay or compose the ope
 - Auth: `storage-state.json`, redacted auth header names, cookie domains, CSRF-like header names, login redirects, and refresh triggers such as `401` or `403`.
 - Navigation: page attachment, main-frame URL changes, popups/new pages, downloads, and `pageName` on UI actions and network events.
 - Operation logic: user action timeline, API chain after each action, captured state values such as `jobId` or `downloadUrl`, and final output paths.
+- Operation semantics: primary business action, input-to-payload mapping, auth/token providers, durable ids, polling semantics, download authorization, output contract, and acceptance checks.
 
 Keep these materials local. Summaries may mention header names and domains, but never raw token, cookie, or business data values.
 
@@ -61,6 +71,8 @@ runs/<task-name>/
   network.jsonl             # raw API/download capture with pageName
   user-actions.jsonl        # human click/input/change/navigation timeline
   candidates.json           # compact ranked operation candidates
+  operation.spec.json       # semantic mechanism: inputs, states, anchors, auth, outputs
+  replay-feasibility.json   # runtime fit, gaps, selected runner or harness
   operation.recipe.draft.json # unconfirmed API operation contract
   operation.recipe.json     # user-confirmed final API operation contract
   inputs.json               # user-specified variables for replay
@@ -107,8 +119,67 @@ node api-replay-recorder/scripts/summarize-network.mjs \
 ```
 
 6. Use `uiTimeline` and `actionWindows` in `candidates.json` to map the user's click to the API request chain.
-7. Write `operation.recipe.draft.json`, validate it, then execute it with `scripts/run-operation.mjs`.
-8. Show the API replay result to the user without exposing secrets. If and only if the user explicitly confirms the replay is correct, finalize the materials with `scripts/finalize-api-materials.mjs`.
+7. Run Operation Analysis and write `operation.spec.json`.
+8. Run Runtime Fit Analysis and write `replay-feasibility.json`.
+9. If the generic runner fits, write `operation.recipe.draft.json`, preflight it, then execute it with `scripts/run-operation.mjs`. If it does not fit, build a narrow state-machine harness from `operation.spec.json`.
+10. Show the replay result to the user without exposing secrets. If and only if the user explicitly confirms the replay is correct, finalize the materials with `scripts/finalize-api-materials.mjs`.
+
+## Operation Analysis
+
+Run this before writing any recipe. The point is to translate observed UI/network evidence into the mechanism the enterprise system actually uses.
+
+Read `references/operation-spec.md`, then write `operation.spec.json` with:
+
+- `operationType`: classify as `simple-query`, `paginated-query`, `sync-download`, `async-job-download`, `cross-domain-download`, `form-submit`, `approval-flow`, `multi-page-workflow`, or `ui-only-state-machine`.
+- `userIntent`: the business action, object, and expected output.
+- `inputs`: user-controlled business values and where they appear in UI/API evidence.
+- `apiChain`: requests grouped by role, such as bootstrap token, primary action, status poll, download, verification, or auxiliary metadata.
+- `stateModel`: runtime values to capture, durable business/server ids, terminal states, and weak anchors to reject.
+- `authModel`: storage state, login redirects, token providers, refresh triggers, and values that recording intentionally redacted.
+- `acceptance`: proof that replay is business-equivalent to the recorded operation.
+
+Do not use a success case as a domain template. Use it only as evidence that robust skills reduce open-ended UI work into one of these shapes:
+
+```text
+explicit path choice
+business contract
+auth and token model
+state transitions
+failure branches
+acceptance checks
+stable output model
+```
+
+## Runtime Fit Analysis
+
+Write `replay-feasibility.json` after `operation.spec.json`.
+
+Use `fit: "supported"` only when the mechanism can be represented by `scripts/run-operation.mjs`:
+
+- Ordered HTTP steps.
+- Templates limited to `${input.*}`, `${state.*}`, and `${env.*}`.
+- Simple dot-path captures such as `$.data.taskId`.
+- Polling with `equals` or `exists`.
+- File outputs with explicit status, content-type, and size checks.
+
+Use `fit: "unsupported"` and choose a specialized harness when the spec needs:
+
+- Array filtering or row matching by predicate, such as "find row where taskId equals this run's taskId".
+- Runtime token providers not expressible as ordinary recipe steps.
+- SSO refresh, localStorage/sessionStorage extraction, or browser-only auth.
+- Cross-domain download authorization or token exchange.
+- File parsing, content validation, or domain-specific assertions beyond generic checks.
+- Multi-page UI state as part of the mechanism.
+
+Do not run replay when fit is unsupported. Running anyway turns a compiler/runtime mismatch into a local patch loop.
+
+Preflight supported recipes:
+
+```bash
+node api-replay-recorder/scripts/validate-recipe.mjs \
+  runs/export-report/operation.recipe.draft.json \
+  runs/export-report/inputs.json
+```
 
 ## UI Replay Workflow
 
@@ -218,10 +289,12 @@ states:
 3. Repeat for at most 2 more representative examples when variables, filters, export format, pagination, or async jobs are uncertain.
 4. Summarize `network.jsonl` with `scripts/summarize-network.mjs`; inspect `candidates.json`, not the raw log.
 5. Select the operation chain using the heuristics below. An operation may have multiple requests.
-6. Write `operation.recipe.draft.json` using `references/api-recipe.md`.
-7. Validate replay on 1-3 known examples before running the user-requested operation.
-8. Execute the operation with `scripts/run-operation.mjs` or a narrowly equivalent harness.
-9. Ask the user to confirm whether the API replay result is correct. Finalize the API materials only after explicit confirmation.
+6. Write `operation.spec.json` using `references/operation-spec.md`.
+7. Write `replay-feasibility.json` and choose `run-operation.mjs` or a specialized harness.
+8. If supported, write `operation.recipe.draft.json` using `references/api-recipe.md` and preflight it with `scripts/validate-recipe.mjs`.
+9. Validate replay on 1-3 known examples before running the user-requested operation.
+10. Execute the operation with `scripts/run-operation.mjs` or a narrowly equivalent harness.
+11. Ask the user to confirm whether the replay result is correct. Finalize the API materials only after explicit confirmation.
 
 ## Low-Capability Agent Action Contract
 
@@ -259,12 +332,15 @@ Prefer requests that:
 - Return result-like keys such as `items`, `records`, `rows`, `list`, `data`, `total`, `page`, `jobId`, `taskId`, `downloadUrl`, `fileId`, or `status`.
 - Reappear with predictable payload changes across different sample inputs.
 
-Treat these as common operation shapes:
+Treat these as candidate evidence for operation types:
 
-- Single request: click action maps to one API request and response.
-- Export file: click action returns `text/csv`, Excel, PDF, octet-stream, or `content-disposition`.
-- Async export: first request creates a `jobId`; later requests poll status; final request downloads a file.
-- Query then export: one request loads data or filters; a later request exports the same filter payload.
+- `simple-query`: one request returns the business result.
+- `paginated-query`: query request has cursor, page, offset, or limit semantics.
+- `sync-download`: action returns `text/csv`, Excel, PDF, octet-stream, or `content-disposition`.
+- `async-job-download`: first request creates `jobId`, `taskId`, `exportId`, `requestId`, or equivalent; later requests poll and download.
+- `cross-domain-download`: download URL host differs from app host, or a token exchange precedes the file request.
+- `form-submit` / `approval-flow`: request mutates durable business state and needs a verification endpoint.
+- `multi-page-workflow`: browser navigation, frame state, or popup state remains part of the mechanism.
 
 Reject candidates that:
 
@@ -275,21 +351,26 @@ Reject candidates that:
 
 ## Replay Workflow
 
-Use direct HTTP replay after operation validation. Do not use this workflow until `operation.recipe.draft.json` exists and represents the selected API chain. This is the only replay mode that can promote API materials to final status.
+Use direct HTTP replay only after operation analysis and runtime fit analysis. Do not use this workflow until `operation.spec.json`, `replay-feasibility.json`, and `operation.recipe.draft.json` exist and the feasibility result says the generic runner fits. This is the only generic replay mode that can promote API materials to final status.
 
 1. Load auth from `storage-state.json` or a browser-refreshed session.
-2. Build requests from `operation.recipe.draft.json`, replacing only declared input variables.
-3. Run a small validation set and compare status code, returned fields, file metadata, or known UI observations.
-4. Run the user-requested operation. For batches, checkpoint after every item.
-5. Show a compact replay result to the user: statuses, response keys, row counts, file names, file sizes, or other non-secret proof points.
-6. Wait for explicit user confirmation that the API replay result is correct.
-7. Finalize the materials by promoting `operation.recipe.draft.json` to `operation.recipe.json`, writing `replay-acceptance.json`, and writing `api-materials.json`.
-8. Use rate limits and retries with backoff. On repeated `401`, `403`, CSRF errors, or redirect-to-login responses, refresh auth with Playwright and resume from the checkpoint.
-9. Save structured responses to `results.jsonl` and exported files to `downloads/`.
+2. Run `scripts/validate-recipe.mjs`. Treat errors as a hard stop and warnings as prompts to revisit `operation.spec.json`.
+3. Build requests from `operation.recipe.draft.json`, replacing only declared input variables.
+4. Run a small validation set and compare status code, returned fields, captured durable ids, file metadata, or known UI observations.
+5. Run the user-requested operation. For batches, checkpoint after every item.
+6. Show a compact replay result to the user: statuses, response keys, captured anchors, row counts, file names, file sizes, or other non-secret proof points.
+7. Wait for explicit user confirmation that the replay result is business-equivalent to the UI operation.
+8. Finalize the materials by promoting `operation.recipe.draft.json` to `operation.recipe.json`, writing `replay-acceptance.json`, and writing `api-materials.json`.
+9. Use rate limits and retries with backoff. On repeated `401`, `403`, CSRF errors, or redirect-to-login responses, refresh auth with Playwright and resume from the checkpoint.
+10. Save structured responses to `results.jsonl` and exported files to `downloads/`.
 
 Example invocation:
 
 ```bash
+node api-replay-recorder/scripts/validate-recipe.mjs \
+  runs/export-report/operation.recipe.draft.json \
+  runs/export-report/inputs.json
+
 node api-replay-recorder/scripts/run-operation.mjs \
   runs/export-report/operation.recipe.draft.json \
   runs/export-report/inputs.json \
@@ -308,12 +389,16 @@ node api-replay-recorder/scripts/finalize-api-materials.mjs \
 ## Failure Recovery
 
 - If no stable endpoint appears, capture another run with one changed query value and compare candidates.
-- If CSRF or nonce fields differ per request, capture the page bootstrap request that creates the token and add it to the recipe preflight.
+- If CSRF or nonce fields differ per request, add a runtime token provider to `operation.spec.json`; only add recipe steps if the generic runner can fetch and apply the token.
 - If the endpoint paginates, identify page, cursor, offset, or limit fields before batch execution.
-- If export is async, capture the create-job request, poll request, and download request as separate recipe steps.
+- If export is async, model create-job, poll, and download roles in `operation.spec.json`; require the poll/download chain to use this run's durable id.
+- If the system exposes a task list, do not use "latest row" unless no durable id exists and the user accepts the risk.
+- If the download host differs from the app host, model download authorization or token exchange explicitly. A raw URL copied from the browser is not enough.
 - If the browser download has no visible API body, use the download URL and response headers as the candidate operation.
 - If replay returns fewer rows than the UI, check hidden filters, tenant headers, locale, date range defaults, and permission-scoping headers.
-- If the agent loops or clicks unrelated controls, stop the run and tighten the state machine before retrying.
+- If replay writes a tiny file, HTML login page, JSON error, or unauthorized body, treat it as failed acceptance, not a successful download.
+- If the same class of failure repeats twice, stop local repair and update `replay-feasibility.json`. The likely issue is an abstraction/runtime mismatch, not a missing field.
+- If the agent loops or clicks unrelated controls, stop the run and tighten the UI state machine before retrying.
 
 ## Resources
 
@@ -321,6 +406,8 @@ node api-replay-recorder/scripts/finalize-api-materials.mjs \
 - `scripts/record-network.mjs`: import this helper into Playwright scripts to write structured API/download events and action markers to `network.jsonl`.
 - `scripts/summarize-network.mjs`: run this on `network.jsonl` and optional `user-actions.jsonl` to produce compact ranked operation candidates and UI-to-API timelines.
 - `scripts/replay-ui.mjs`: best-effort visual replay from `user-actions.jsonl`; use for "show me what I did" requests, not deterministic automation.
+- `scripts/validate-recipe.mjs`: preflight a generic recipe; it catches unsupported templates, unsupported repeat conditions, unsupported JSONPath, undeclared inputs, weak anchors, and missing file validation.
 - `scripts/run-operation.mjs`: execute `operation.recipe.draft.json` or `operation.recipe.json` with user inputs and local auth state.
 - `scripts/finalize-api-materials.mjs`: promote a successful API replay to final materials only after explicit user confirmation.
+- `references/operation-spec.md`: read this after summarizing evidence and before writing a recipe or harness.
 - `references/api-recipe.md`: read this before writing `operation.recipe.draft.json`, finalizing `operation.recipe.json`, or creating a replay harness.

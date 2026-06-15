@@ -122,6 +122,8 @@ const optionalFiles = [
   "network.jsonl",
   "user-actions.jsonl",
   "candidates.json",
+  "operation.spec.json",
+  "replay-feasibility.json",
   "validation.json",
   "ui-replay-report.json"
 ].filter((name) => existsSync(join(runDir, name)));
