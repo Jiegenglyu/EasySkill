@@ -1,0 +1,4 @@
+interface:
+  display_name: "TwinSkill"
+  short_description: "Build verified API twins of human web workflows"
+  default_prompt: "Use $twinskill to record one logged-in browser workflow as an isolated run, preserve selectors and runtime network evidence, analyze useful API chains, verify API replay, then produce skill-ready materials."

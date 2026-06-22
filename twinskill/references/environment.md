@@ -21,7 +21,7 @@ The scripts enforce this through `scripts/runtime-profile.mjs`. Do not replace i
 Run preflight before fragile enterprise workflows or when reusing a saved login state:
 
 ```bash
-node api-replay-recorder/scripts/preflight.mjs \
+node twinskill/scripts/preflight.mjs \
   "https://internal.example.com/report" \
   runs/export-report \
   --storage-state=runs/export-report/storage-state.json \

@@ -20,7 +20,7 @@ On failure, preserve:
 Use:
 
 ```bash
-node api-replay-recorder/scripts/debug-snapshot.mjs \
+node twinskill/scripts/debug-snapshot.mjs \
   "https://internal.example.com/report" \
   runs/export-report \
   --storage-state=runs/export-report/storage-state.json \

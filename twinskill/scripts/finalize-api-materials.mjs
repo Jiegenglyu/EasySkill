@@ -133,6 +133,11 @@ const optionalFiles = [
   "session.json",
   "network.jsonl",
   "user-actions.jsonl",
+  "api-analysis.json",
+  "endpoint-groups.json",
+  "traffic-noise-report.json",
+  "action-api-links.json",
+  "api-chain-candidates.json",
   "candidates.json",
   "validation.json",
   "ui-replay-report.json"
@@ -223,6 +228,10 @@ const skillSeed = {
     results: "results.jsonl",
     apiMaterials: "api-materials.json",
     replayAcceptance: "replay-acceptance.json",
+    apiAnalysis: existsSync(join(runDir, "api-analysis.json")) ? "api-analysis.json" : null,
+    endpointGroups: existsSync(join(runDir, "endpoint-groups.json")) ? "endpoint-groups.json" : null,
+    actionApiLinks: existsSync(join(runDir, "action-api-links.json")) ? "action-api-links.json" : null,
+    apiChainCandidates: existsSync(join(runDir, "api-chain-candidates.json")) ? "api-chain-candidates.json" : null,
     candidates: existsSync(join(runDir, "candidates.json")) ? "candidates.json" : null,
     validation: existsSync(join(runDir, "validation.json")) ? "validation.json" : null,
     environment: existsSync(join(runDir, "environment.json")) ? "environment.json" : null
@@ -269,6 +278,7 @@ ${JSON.stringify(recipe.inputs || {}, null, 2)}
 - \`results.jsonl\`: proof that replay ran.
 - \`api-materials.json\`: verified material manifest.
 - \`skill-seed.json\`: structured seed for generating a formal Skill.
+- \`api-analysis.json\`: optional TwinSkill 2.0 evidence for endpoint groups and chain selection, when present.
 
 ## Skill Creation Notes
 

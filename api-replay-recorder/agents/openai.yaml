@@ -1,4 +1,0 @@
-interface:
-  display_name: "API Replay Recorder"
-  short_description: "Turn recorded workflows into Skill seeds"
-  default_prompt: "Use $api-replay-recorder to record one logged-in browser workflow as an isolated run, preserve selectors and network evidence, verify API replay, then produce skill-ready materials."

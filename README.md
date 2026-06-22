@@ -1,22 +1,23 @@
-# EasySkill
+# TwinSkill
 
-EasySkill is a human UI operation recorder for LLM agents. It records one browser workflow per isolated run, stores UI and network evidence locally, verifies deterministic API replay when possible, and turns the verified run into skill-ready materials.
+TwinSkill builds verified API-level digital twins of human web workflows for LLM agents.
 
-The repository currently contains one skill:
+A human demonstrates a browser workflow once. TwinSkill records the UI timeline and runtime network traffic, filters noisy requests, groups API-like endpoints, links useful API chains to the demonstrated task, verifies deterministic API replay, and turns the accepted replay into skill-ready materials.
 
-- `api-replay-recorder`: records human or agent-driven web UI actions, page transitions, downloads, selectors, environment fingerprints, and API traffic.
+The project is in its 2.0 direction: UI operation is the discovery path and fallback; API replay is the durable execution path.
 
 ## Positioning
 
-This is a recorder and Skill-production precursor. It copies one human UI operation into a managed run directory and prepares verified materials for a later complete Skill, for example:
+TwinSkill is a recorder, analyzer, and Skill-production precursor. It copies one human UI operation into a managed run directory and prepares verified materials for a later complete Skill, for example:
 
 - scrape data from an internal website
 - export or download reports
 - transform the captured data
 - run analysis
 - generate a final report
+- approve, submit, or batch-process records with explicit replay validation
 
-The key idea is to record the human UI workflow once, then stop asking an LLM to repeatedly click around the browser. Each recording is managed separately through `run-manifest.json`. After API replay succeeds and the user explicitly confirms the result, the run is marked `skill-ready` and produces `api-materials.json`, `skill-seed.json`, and `skill-brief.md` for a later Skill-generation workflow.
+The key idea is to create an executable twin of the demonstrated workflow. The UI shows intent and triggers real auth/API behavior; TwinSkill turns the useful runtime API chain into `operation.recipe.draft.json`, validates replay, and finalizes only after explicit user confirmation.
 
 ## Workflow
 
@@ -24,8 +25,8 @@ The key idea is to record the human UI workflow once, then stop asking an LLM to
 2. Start a headed recorder on the target website.
 3. Let the user complete one representative operation in the browser.
 4. Save local artifacts under a separate `runs/<task-name>/` directory.
-5. Summarize the UI timeline and network traffic into operation candidates.
-6. Compile the recording into semantic actions or `operation.recipe.draft.json`.
+5. Analyze the UI timeline and network traffic into endpoint groups, noise reports, action-to-API links, and API chain candidates.
+6. Compile the selected chain into `operation.recipe.draft.json`.
 7. Run API replay and show the non-secret result summary to the user.
 8. After explicit user confirmation, promote the draft recipe, write final API materials, and mark the run as `skill-ready`.
 9. Use `skill-seed.json` and `skill-brief.md` as input to a later formal Skill.
@@ -41,6 +42,11 @@ runs/<task-name>/
   user-actions.jsonl
   environment.json
   preflight.json
+  api-analysis.json
+  endpoint-groups.json
+  traffic-noise-report.json
+  action-api-links.json
+  api-chain-candidates.json
   candidates.json
   operation.recipe.draft.json
   operation.recipe.json
@@ -59,6 +65,33 @@ runs/<task-name>/
 
 Run artifacts are intentionally ignored by git because they can contain cookies, tokens, intranet URLs, request bodies, downloaded files, or business data.
 
+## TwinSkill 2.0 API Analysis
+
+The network analyzer no longer treats "useful API" as a pure score-ranking problem. It follows an APISENSOR-inspired pipeline adapted to task-level workflow reconstruction:
+
+```text
+human UI demonstration
+-> record UI actions + runtime network traffic
+-> denoise static/background/telemetry traffic
+-> normalize endpoint paths into templates
+-> group similar API-like requests
+-> align endpoint groups to UI action windows
+-> propose ordered API chain candidates
+-> replay the selected chain
+-> user confirms
+-> finalize skill-ready materials
+```
+
+The main outputs are:
+
+- `endpoint-groups.json`: normalized API-like endpoint clusters, such as `/api/report/{number}/export`.
+- `traffic-noise-report.json`: requests filtered as static assets, telemetry, full documents, or background traffic.
+- `action-api-links.json`: endpoint groups that happened after recorded UI actions, page-aware when possible.
+- `api-chain-candidates.json`: ordered chains likely to reproduce the demonstrated task.
+- `api-analysis.json`: the complete analysis bundle, including a legacy ranked `candidates` view.
+
+Score still exists, but it is only supporting evidence. The durable selection should be a replayable API chain with declared inputs, captured state, and verifiable outputs.
+
 ## Installation
 
 This repository can be used by Codex, OpenCode, Claude Code, Cursor-style agents, or any local AI agent that can read a folder of instructions and run shell commands.
@@ -66,93 +99,74 @@ This repository can be used by Codex, OpenCode, Claude Code, Cursor-style agents
 The skill itself is the folder:
 
 ```text
-api-replay-recorder/
+twinskill/
 ```
 
 The important entrypoint for an AI agent is:
 
 ```text
-api-replay-recorder/SKILL.md
+twinskill/SKILL.md
 ```
-
-### For Any AI Agent
-
-Tell the agent to clone the repo, install dependencies from the repo root, and either load `api-replay-recorder/SKILL.md` directly or copy/symlink the `api-replay-recorder` folder into its own skill/instruction directory.
 
 Agent-facing install prompt:
 
 ```text
-Install the EasySkill api-replay-recorder skill.
+Install the TwinSkill skill.
 
-1. Clone https://github.com/Jiegenglyu/EasySkill.git.
+1. Clone https://github.com/Jiegenglyu/TwinSkill.git.
 2. Run npm install from the repository root.
-3. Use api-replay-recorder/SKILL.md as the skill entrypoint.
-4. If your environment has a skills directory, install the whole api-replay-recorder folder there by copy or symlink.
+3. Use twinskill/SKILL.md as the skill entrypoint.
+4. If your environment has a skills directory, install the whole twinskill folder there by copy or symlink.
 5. Keep runs/, storage-state.json, network.jsonl, user-actions.jsonl, downloads/, cookies, tokens, CSRF values, and intranet data local. Do not commit or paste them into chat.
 ```
 
 Manual install:
 
 ```bash
-git clone https://github.com/Jiegenglyu/EasySkill.git ~/.easyskill
-npm --prefix ~/.easyskill install
+git clone https://github.com/Jiegenglyu/TwinSkill.git ~/.twinskill
+npm --prefix ~/.twinskill install
 ```
 
 If your agent supports a skill directory, install the skill folder into that directory:
 
 ```bash
 mkdir -p ~/.agent-skills
-ln -sfn ~/.easyskill/api-replay-recorder ~/.agent-skills/api-replay-recorder
+ln -sfn ~/.twinskill/twinskill ~/.agent-skills/twinskill
 ```
 
-Replace `~/.agent-skills` with the path your agent uses. If your agent does not follow symlinks, copy the folder instead:
-
-```bash
-mkdir -p ~/.agent-skills
-cp -R ~/.easyskill/api-replay-recorder ~/.agent-skills/api-replay-recorder
-```
-
-For agents without a native skill directory, keep the repository cloned and ask the agent to read `~/.easyskill/api-replay-recorder/SKILL.md` before using the scripts.
+For agents without a native skill directory, keep the repository cloned and ask the agent to read `~/.twinskill/twinskill/SKILL.md` before using the scripts.
 
 ### For Codex
 
 For Codex, run:
 
 ```bash
-git clone https://github.com/Jiegenglyu/EasySkill.git "${CODEX_HOME:-$HOME/.codex}/easyskill"
-npm --prefix "${CODEX_HOME:-$HOME/.codex}/easyskill" install
+git clone https://github.com/Jiegenglyu/TwinSkill.git "${CODEX_HOME:-$HOME/.codex}/twinskill-repo"
+npm --prefix "${CODEX_HOME:-$HOME/.codex}/twinskill-repo" install
 
 mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
 ln -sfn \
-  "${CODEX_HOME:-$HOME/.codex}/easyskill/api-replay-recorder" \
-  "${CODEX_HOME:-$HOME/.codex}/skills/api-replay-recorder"
+  "${CODEX_HOME:-$HOME/.codex}/twinskill-repo/twinskill" \
+  "${CODEX_HOME:-$HOME/.codex}/skills/twinskill"
 ```
 
 Restart Codex after installation. The skill should be available as:
 
 ```text
-$api-replay-recorder
+$twinskill
 ```
 
 Quick verification:
 
 ```bash
-test -f ~/.easyskill/api-replay-recorder/SKILL.md
-node --check ~/.easyskill/api-replay-recorder/scripts/runtime-profile.mjs
-node --check ~/.easyskill/api-replay-recorder/scripts/preflight.mjs
-node --check ~/.easyskill/api-replay-recorder/scripts/human-record.mjs
-node --check ~/.easyskill/api-replay-recorder/scripts/replay-ui.mjs
-node --check ~/.easyskill/api-replay-recorder/scripts/finalize-api-materials.mjs
+test -f ~/.twinskill/twinskill/SKILL.md
+node --check ~/.twinskill/twinskill/scripts/runtime-profile.mjs
+node --check ~/.twinskill/twinskill/scripts/preflight.mjs
+node --check ~/.twinskill/twinskill/scripts/human-record.mjs
+node --check ~/.twinskill/twinskill/scripts/analyze-network.mjs
+node --check ~/.twinskill/twinskill/scripts/replay-ui.mjs
+node --check ~/.twinskill/twinskill/scripts/finalize-api-materials.mjs
 ```
-
-To update later:
-
-```bash
-git -C ~/.easyskill pull
-npm --prefix ~/.easyskill install
-```
-
-The symlink install keeps the repository layout intact, so the skill can find its bundled scripts while the Node dependency is installed once at the repository root.
 
 ## Usage
 
@@ -162,7 +176,7 @@ Install dependencies:
 npm install
 ```
 
-The commands below assume the current working directory is the cloned `EasySkill` repository root.
+The commands below assume the current working directory is the cloned `TwinSkill` repository root.
 
 Preflight a target page before a fragile workflow:
 
@@ -181,16 +195,16 @@ npm run record -- "https://internal.example.com/report" runs/export-report
 
 Use the opened browser to complete the target operation once. Press Enter in the terminal when the operation is finished.
 
-The recorder will not silently append to an existing run that already has artifacts. It creates a timestamped sibling directory and prints the actual run directory. Use that printed directory in later commands. Pass `--append` only when intentionally continuing the same run.
-
-Summarize the captured materials:
+Analyze the captured materials:
 
 ```bash
-npm run summarize -- \
+npm run analyze -- \
   runs/export-report/network.jsonl \
-  runs/export-report/candidates.json \
+  runs/export-report/api-analysis.json \
   runs/export-report/user-actions.jsonl
 ```
+
+Inspect `api-chain-candidates.json`, `action-api-links.json`, and `endpoint-groups.json` before writing `operation.recipe.draft.json`.
 
 Replay the visible UI path once from `user-actions.jsonl`:
 
@@ -198,7 +212,7 @@ Replay the visible UI path once from `user-actions.jsonl`:
 npm run replay-ui -- runs/export-report
 ```
 
-This is best-effort: it first tries recorded selector hints and falls back to recorded coordinates. It is useful for showing "what I did" once, but it is not a deterministic API replay and it does not authorize final API or Skill materials.
+This is best-effort: it first tries recorded selector hints and falls back to recorded coordinates. It is useful for showing "what I did" once, but it is not deterministic API replay and it does not authorize final API or Skill materials.
 
 Replay an extracted API operation from a draft recipe:
 
@@ -237,24 +251,22 @@ npm run debug-snapshot -- \
   --label=after-failure
 ```
 
-The debug snapshot writes visible text, interactive element inventory, DOM summary, HTML, environment details, and an optional screenshot. It is designed to be useful even when the next model cannot inspect images.
-
 ## Design Principles
 
 - Record the human UI workflow once; avoid repeated fragile browser automation.
+- Treat UI automation as discovery and fallback; prefer verified API replay for durable execution.
 - Manage every recording as a separate run; never mix unrelated operations in one run directory.
 - Standardize Playwright Chromium at `1920 x 1080`, device scale factor `1`, `zh-CN`, and `Asia/Shanghai`.
 - Preserve raw materials locally; expose only compact summaries to the agent.
 - Keep secrets out of chat, git, prompts, and final answers.
-- Prefer deterministic scripts, schemas, and state machines over open-ended browser control.
-- Treat API replay as the correctness gate; UI replay is visual inspection only.
+- Use denoising, endpoint grouping, action alignment, and replay validation before calling an API useful.
 - Require explicit user confirmation before promoting draft API materials.
 - Treat `skill-seed.json` and `skill-brief.md` as the handoff into a later formal Skill.
 
 ## Repository Layout
 
 ```text
-api-replay-recorder/
+twinskill/
   SKILL.md
   agents/openai.yaml
   references/environment.md
@@ -268,6 +280,7 @@ api-replay-recorder/
   scripts/debug-snapshot.mjs
   scripts/human-record.mjs
   scripts/record-network.mjs
+  scripts/analyze-network.mjs
   scripts/summarize-network.mjs
   scripts/replay-ui.mjs
   scripts/run-operation.mjs
@@ -276,4 +289,4 @@ api-replay-recorder/
 
 ## Status
 
-Prototype. The recorder, standard runtime, preflight, text-first debug snapshots, UI replay, API replay finalization, and Skill seed generation are implemented. Automatic recipe synthesis, full UI-vs-API equivalence checking, and broad enterprise recovery remain active research and engineering work.
+Prototype, TwinSkill 2.0 direction. The recorder, standard runtime, preflight, text-first debug snapshots, UI replay, API replay finalization, Skill seed generation, endpoint grouping, noise reporting, action-to-API linking, and chain-candidate analysis are implemented. Automatic recipe synthesis, full UI-vs-API equivalence checking, multi-run diffing, and broad enterprise recovery remain active research and engineering work.

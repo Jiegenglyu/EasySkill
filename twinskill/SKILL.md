@@ -1,18 +1,18 @@
 ---
-name: api-replay-recorder
-description: Record human browser operations in a standardized Playwright Chromium environment, manage each recording as an isolated run, preserve UI actions, page transitions, downloads, selectors, and network requests, then compile the trace into deterministic API replay and skill-ready materials. Use when an agent must copy a logged-in web workflow, inspect what a human did, stabilize flaky recorded actions, produce source material for a new Skill, generate local artifacts for later scraping/analysis/reporting skills, or turn a discovered UI workflow into verified API replay.
+name: twinskill
+description: Build verified API-level digital twins of human web workflows. Record one human or agent-driven browser operation in a standardized Playwright Chromium environment, preserve UI actions and runtime network traffic, denoise and cluster API-like endpoints, align useful API chains to the demonstrated task, then replay and finalize skill-ready materials. Use when an agent must copy a logged-in web workflow, discover task-relevant internal APIs from runtime traffic, stabilize flaky UI work, or turn a human demonstration into verified API replay.
 ---
 
-# Fake Human UI Recorder
+# TwinSkill
 
 ## Overview
 
-Use this skill as a recorder and Skill-production precursor for copying human web operations. It records one real or agent-driven browser operation per isolated run, preserves the UI timeline and related API/download traffic, and produces compact local materials that a later full Skill can use for tasks such as data scraping, data analysis, report generation, approval flows, exports, and batch operations.
+Use this skill to create an executable digital twin of a human web workflow. A person demonstrates the workflow once in the UI; TwinSkill records the UI timeline and runtime API/download traffic, filters noisy traffic, groups similar endpoints, links useful API chains to the demonstrated action, and produces compact local materials that a later full Skill can use for tasks such as data scraping, data analysis, report generation, approval flows, exports, and batch operations.
 
-The main goal is not to finish the business task directly. The goal is to record the human UI operation once in a standard runtime, manage that recording independently, preserve enough evidence to compile it into semantic actions or API replay, and produce a skill-ready package after validation. Playwright discovers the operation and refreshes auth, scripts create compact artifacts, and replay uses two distinct meanings:
+The main goal is not to finish the business task directly. The goal is to record the human UI operation once in a standard runtime, manage that recording independently, preserve enough evidence to reconstruct a task-level API twin, and produce a skill-ready package after validation. Playwright discovers the operation and refreshes auth, scripts create compact artifacts, and replay uses two distinct meanings:
 
 - **UI replay**: best-effort visual replay from `user-actions.jsonl` with recorded URLs, selector hints, viewport sizes, and coordinate fallback. Use this only when the user asks to "show what I did" or wants to inspect the captured path. It is not an acceptance gate.
-- **API replay**: deterministic HTTP execution from `operation.recipe.draft.json`. Use this as the only correctness replay for repeatable operations, batch work, exports, scraping, or later skills.
+- **API replay**: deterministic HTTP execution from `operation.recipe.draft.json`. Use this as the only correctness replay for repeatable operations, batch work, exports, scraping, or later skills. This is the executable twin.
 
 Do not invent ad hoc Playwright replay scripts. Use `scripts/replay-ui.mjs` for visual inspection only, or write and run `operation.recipe.draft.json` with `scripts/run-operation.mjs` for API replay. Produce final API and Skill seed materials only after the user explicitly confirms that the API replay result is correct.
 
@@ -21,7 +21,7 @@ Do not invent ad hoc Playwright replay scripts. Use `scripts/replay-ui.mjs` for 
 - Assume no stronger model is available for planning, review, endpoint selection, or recovery.
 - Make every important decision either deterministic or bounded by small enumerations.
 - Require scripts to create compact artifacts before the agent reasons over them.
-- Prefer "choose one candidate from a ranked list" over "inspect all network traffic".
+- Prefer "choose one chain from `api-chain-candidates.json`" over "inspect all network traffic".
 - Prefer "fill these declared variables and run an operation recipe" over "write a custom replay program".
 - Stop and ask for a tighter state machine when the current UI path cannot be expressed with fixed selectors and assertions.
 - Treat "Interrupted" or a failed shell command as unknown until the command output proves the cause. Do not claim a permission failure when earlier commands with the same prefix already ran.
@@ -30,18 +30,18 @@ Do not invent ad hoc Playwright replay scripts. Use `scripts/replay-ui.mjs` for 
 
 - Treat the standard Playwright runtime as a first-class correctness constraint. Read `references/environment.md` before recording or replaying fragile enterprise workflows.
 - Treat recorded human actions as draft evidence. Read `references/selectors.md` before converting clicks into a state machine, and compile actions into business intent with selectors and assertions.
-- Prefer API replay over UI replay for any repeatable operation. Read `references/api-strategy.md` before selecting endpoints or writing an operation recipe.
+- Prefer API replay over UI replay for any repeatable operation. Read `references/api-strategy.md` before selecting endpoint groups, API chains, or writing an operation recipe.
 - Capture failure evidence instead of guessing. Read `references/recovery.md` when preflight, recording, selector replay, or API replay fails.
 - Manage every recording as a separate run. Never merge unrelated operations into one run directory; use `run-manifest.json` as the lifecycle record.
 - Treat `skill-seed.json` and `skill-brief.md` as the handoff into a later Skill-creation workflow. Read `references/skill-production.md` before generating a formal Skill from a run.
 - Do not ask the model to freely browse, inspect, decide, and batch-query in one loop.
-- Prefer human-driven recording when the user can perform the operation. Let the user click; let the agent wait, record, summarize, and replay.
+- Prefer human-driven recording when the user can perform the operation. Let the user click; let the agent wait, record, analyze, and replay.
 - Use the UI for 1-3 representative examples only. Run repeated work through the captured API operation.
 - Persist raw artifacts to files. Put only compact summaries and selected candidates in model context.
 - Treat cookies, bearer tokens, CSRF tokens, and intranet data as local secrets. Do not paste them into chat, logs, or final answers.
 - Use selectors, URL assertions, timeouts, and state transitions owned by code. The model may choose among known actions but must not invent arbitrary browser operations.
 - Do not design a strong-model/weak-model handoff. This skill is for one low-capability agent operating with deterministic guardrails.
-- The required final output is a user-confirmed executable API material set, `skill-seed.json`, `skill-brief.md`, and a short invocation command, not just an endpoint guess.
+- The required final output is a user-confirmed executable API material set, `skill-seed.json`, `skill-brief.md`, and a short invocation command, not just an endpoint guess or a high-scoring request.
 - Do not silently generate a final business Skill from raw recording evidence. Generate a formal Skill only as a separate step from verified skill-ready materials.
 - Treat unconfirmed API chains as draft material. Do not present `operation.recipe.json` as final until API replay has run and the user has explicitly accepted the result.
 
@@ -88,6 +88,7 @@ Every recording must preserve enough local material to replay or compose the ope
 
 - Run management: `run-manifest.json` with run id, status, source URL, actual run directory, isolation details, and skill-production readiness.
 - Interfaces: method, URL, redacted headers, payload shape, response status, response keys, file/download metadata, and request order.
+- API discovery: denoised traffic, normalized endpoint groups, action-to-API links, candidate chain roles, and rejected noise reasons.
 - Auth: `storage-state.json`, redacted auth header names, cookie domains, CSRF-like header names, login redirects, and refresh triggers such as `401` or `403`.
 - Navigation: page attachment, main-frame URL changes, popups/new pages, downloads, and `pageName` on UI actions and network events.
 - Operation logic: user action timeline, API chain after each action, captured state values such as `jobId` or `downloadUrl`, and final output paths.
@@ -107,7 +108,12 @@ runs/<task-name>/
   network.jsonl             # raw API/download capture with pageName
   user-actions.jsonl        # human click/input/change/navigation timeline
   environment.json          # observed standard runtime fingerprint
-  candidates.json           # compact ranked operation candidates
+  api-analysis.json         # TwinSkill 2.0 denoising, endpoint grouping, and chain analysis
+  endpoint-groups.json      # normalized API-like endpoint clusters
+  traffic-noise-report.json # filtered static, telemetry, document, and background traffic
+  action-api-links.json     # UI action windows linked to endpoint groups
+  api-chain-candidates.json # ordered useful API chain candidates for the demonstrated task
+  candidates.json           # legacy compact ranked request view, when present
   operation.recipe.draft.json # unconfirmed API operation contract
   operation.recipe.json     # user-confirmed final API operation contract
   inputs.json               # user-specified variables for replay
@@ -137,28 +143,28 @@ Use this as the default mode when the user can click the site faster than the ag
 1. Start a headed browser recorder:
 
 ```bash
-node api-replay-recorder/scripts/human-record.mjs \
+node twinskill/scripts/human-record.mjs \
   "https://internal.example.com/report" \
   runs/export-report
 ```
 
-The recorder refuses to silently mix a new run with existing artifacts. If `runs/export-report` already contains recording files, it creates a timestamped sibling directory and prints the actual run directory. Use that printed directory for summarize, UI replay, and API replay commands. Pass `--append` only when intentionally continuing the same run.
+The recorder refuses to silently mix a new run with existing artifacts. If `runs/export-report` already contains recording files, it creates a timestamped sibling directory and prints the actual run directory. Use that printed directory for analysis, UI replay, and API replay commands. Pass `--append` only when intentionally continuing the same run.
 
 2. Tell the user to complete the exact operation once, for example choose filters and click Export.
 3. Wait while the script records `network.jsonl`, `user-actions.jsonl`, downloads, and `storage-state.json`.
 4. End recording only when the user explicitly ends the operation by pressing Enter in the terminal, or by sending SIGINT/SIGTERM to cancel and finalize local artifacts.
 
-5. Summarize the session:
+5. Analyze the session:
 
 ```bash
-node api-replay-recorder/scripts/summarize-network.mjs \
+node twinskill/scripts/analyze-network.mjs \
   runs/export-report/network.jsonl \
-  runs/export-report/candidates.json \
+  runs/export-report/api-analysis.json \
   runs/export-report/user-actions.jsonl
 ```
 
-6. Use `uiTimeline` and `actionWindows` in `candidates.json` to map the user's click to the API request chain.
-7. Compile the action into business intent: stable selectors and assertions for UI-only discovery, or API recipe steps for repeatable execution.
+6. Use `endpoint-groups.json`, `action-api-links.json`, and `api-chain-candidates.json` to map the user's action to a task-level API chain.
+7. Compile the action into business intent: stable selectors and assertions for UI-only fallback, or API recipe steps for repeatable execution.
 8. Write `operation.recipe.draft.json`, validate it, then execute it with `scripts/run-operation.mjs`.
 9. Show the API replay result to the user without exposing secrets. If and only if the user explicitly confirms the replay is correct, finalize the materials with `scripts/finalize-api-materials.mjs`; this writes `api-materials.json`, `skill-seed.json`, `skill-brief.md`, and marks `run-manifest.json` as `skill-ready`.
 
@@ -169,7 +175,7 @@ Use UI replay only to visibly repeat a captured browser path once. It is not a c
 Run:
 
 ```bash
-node api-replay-recorder/scripts/replay-ui.mjs \
+node twinskill/scripts/replay-ui.mjs \
   runs/export-report
 ```
 
@@ -238,7 +244,7 @@ Use this only when the user cannot manually operate the site.
 3. Execute one representative UI action through a fixed state machine:
 
 ```js
-import { attachNetworkRecorder } from "./api-replay-recorder/scripts/record-network.mjs";
+import { attachNetworkRecorder } from "./twinskill/scripts/record-network.mjs";
 
 const recorder = attachNetworkRecorder(page, {
   outFile: "runs/export-report/network.jsonl"
@@ -269,8 +275,8 @@ states:
 ```
 
 4. Repeat for at most 2 more representative examples when variables, filters, export format, pagination, or async jobs are uncertain.
-5. Summarize `network.jsonl` with `scripts/summarize-network.mjs`; inspect `candidates.json`, not the raw log.
-6. Select the operation chain using the heuristics below. An operation may have multiple requests.
+5. Analyze `network.jsonl` with `scripts/analyze-network.mjs`; inspect `api-chain-candidates.json`, `action-api-links.json`, and `endpoint-groups.json`, not the raw log.
+6. Select the operation chain using the TwinSkill API discovery rules below. An operation may have multiple requests.
 7. Write `operation.recipe.draft.json` using `references/api-recipe.md`.
 8. Validate replay on 1-3 known examples before running the user-requested operation.
 9. Execute the operation with `scripts/run-operation.mjs` or a narrowly equivalent harness.
@@ -301,30 +307,41 @@ Allowed actions:
 
 The executor must map `target` names to fixed selectors. Reject any action outside the enum, any unknown target, and any value that does not match the current state. Keep a small step budget per state and fail closed with text snapshots, DOM summary, interactive element inventory, and network log. Screenshots are optional. The agent should never receive a raw DOM dump or full HAR unless a human explicitly asks for debugging.
 
-## Endpoint Selection Heuristics
+## API Twin Discovery
 
-Prefer requests that:
+Do not select useful APIs only by request score. Treat the score as an ordering hint after the analyzer has already filtered noisy traffic and grouped endpoint templates.
 
-- Occur after `mark_before_action` and before `mark_after_action`.
-- Are `fetch`, `xhr`, `document`, or a Playwright download event, not image, script, beacon, analytics, or telemetry.
+Use this four-stage selection model:
+
+1. **API surface**: read `traffic-noise-report.json` and `endpoint-groups.json` to separate API-like endpoint groups from static assets, telemetry, full-page documents, background health checks, and one-off browser noise.
+2. **Task relevance**: read `action-api-links.json` to identify endpoint groups that occur after the relevant human UI action on the same page or inside the `mark_before_action` / `mark_after_action` window.
+3. **Chain role**: read `api-chain-candidates.json` to classify each step as auth/token, query/search, create job, poll status, download file, detail lookup, submit/approve, or result extraction.
+4. **Replayability**: only write `operation.recipe.draft.json` for a chain whose inputs, captured state, repeat conditions, and output checks can be declared.
+
+Prefer API chains that:
+
+- Occur after the demonstrated action and not during unrelated page initialization.
+- Belong to stable endpoint groups such as normalized `/api/report/{number}/export`, not raw one-off IDs.
 - Have JSON request/response bodies, file response headers, or download metadata.
-- Contain action words in the URL or payload such as `search`, `query`, `export`, `download`, `report`, `file`, `task`, `job`, `approve`, or `submit`.
+- Contain user-controlled parameters or values captured from earlier API responses.
 - Return result-like keys such as `items`, `records`, `rows`, `list`, `data`, `total`, `page`, `jobId`, `taskId`, `downloadUrl`, `fileId`, or `status`.
 - Reappear with predictable payload changes across different sample inputs.
 
 Treat these as common operation shapes:
 
-- Single request: click action maps to one API request and response.
-- Export file: click action returns `text/csv`, Excel, PDF, octet-stream, or `content-disposition`.
-- Async export: first request creates a `jobId`; later requests poll status; final request downloads a file.
+- Single request: one UI action maps to one API request and response.
+- Export file: a click returns `text/csv`, Excel, PDF, octet-stream, or `content-disposition`.
+- Async export: one request creates a `jobId`; later requests poll status; final request downloads a file.
 - Query then export: one request loads data or filters; a later request exports the same filter payload.
+- Auth-preflight chain: one request obtains CSRF, nonce, WBI, or signature material used by the business request.
 
-Reject candidates that:
+Reject chains that:
 
 - Are static assets, tracking calls, permission heartbeats, feature flags, or menu metadata.
-- Do not change when the query changes.
+- Do not change when the query changes and do not feed later useful steps.
 - Return HTML for full-page navigation unless no API endpoint exists.
 - Require browser-only state that cannot be refreshed or reproduced reliably.
+- Perform write operations without explicit replay validation and user confirmation.
 
 ## Replay Workflow
 
@@ -343,7 +360,7 @@ Use direct HTTP replay after operation validation. Do not use this workflow unti
 Example invocation:
 
 ```bash
-node api-replay-recorder/scripts/run-operation.mjs \
+node twinskill/scripts/run-operation.mjs \
   runs/export-report/operation.recipe.draft.json \
   runs/export-report/inputs.json \
   runs/export-report
@@ -352,7 +369,7 @@ node api-replay-recorder/scripts/run-operation.mjs \
 After the user confirms the API replay is correct:
 
 ```bash
-node api-replay-recorder/scripts/finalize-api-materials.mjs \
+node twinskill/scripts/finalize-api-materials.mjs \
   runs/export-report \
   --user-confirmed \
   --confirmed-by=user
@@ -386,7 +403,8 @@ Use this only after `run-manifest.json` status is `skill-ready`.
 - `scripts/preflight.mjs`: validate standard runtime, login state, and optional expected text/selector before execution.
 - `scripts/debug-snapshot.mjs`: save URL, text snapshots, interactive element inventory, DOM summary, HTML, optional screenshot, environment details, and debug JSON after failures.
 - `scripts/record-network.mjs`: import this helper into Playwright scripts to write structured API/download events and action markers to `network.jsonl`.
-- `scripts/summarize-network.mjs`: run this on `network.jsonl` and optional `user-actions.jsonl` to produce compact ranked operation candidates and UI-to-API timelines.
+- `scripts/analyze-network.mjs`: run this on `network.jsonl` and optional `user-actions.jsonl` to produce noise reports, normalized endpoint groups, UI-to-API links, and chain candidates.
+- `scripts/summarize-network.mjs`: compatibility alias for `scripts/analyze-network.mjs`.
 - `scripts/replay-ui.mjs`: best-effort visual replay from `user-actions.jsonl`; tries selector hints before coordinate fallback, and remains unsuitable for deterministic automation.
 - `scripts/run-operation.mjs`: execute `operation.recipe.draft.json` or `operation.recipe.json` with user inputs and local auth state.
 - `scripts/finalize-api-materials.mjs`: promote a successful API replay to final materials only after explicit user confirmation.

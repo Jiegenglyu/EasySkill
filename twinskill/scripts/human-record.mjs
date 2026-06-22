@@ -24,6 +24,11 @@ const artifactNames = [
   "session.json",
   "network.jsonl",
   "user-actions.jsonl",
+  "api-analysis.json",
+  "endpoint-groups.json",
+  "traffic-noise-report.json",
+  "action-api-links.json",
+  "api-chain-candidates.json",
   "candidates.json",
   "operation.recipe.draft.json",
   "operation.recipe.json",
@@ -99,6 +104,7 @@ function writeRunManifest(status, extra = {}) {
         session: "session.json",
         network: "network.jsonl",
         userActions: "user-actions.jsonl",
+        apiAnalysis: "api-analysis.json",
         environment: "environment.json",
         storageState: "storage-state.json",
         downloads: "downloads/"
@@ -163,7 +169,7 @@ function installActionRecorder(context) {
     };
 
     const send = (payload) => {
-      window.__apiReplayRecordAction?.({
+      window.__twinSkillRecordAction?.({
         ...payload,
         url: location.href,
         viewport: {
@@ -262,7 +268,7 @@ const browser = await chromium.launch({ headless, args: [...STANDARD_LAUNCH_ARGS
 const context = await browser.newContext(standardContextOptions());
 writeRunManifest("recording");
 
-await context.exposeBinding("__apiReplayRecordAction", async (source, payload) => {
+await context.exposeBinding("__twinSkillRecordAction", async (source, payload) => {
   writeAction({
     pageName: pageNames.get(source.page) || "unknown-page",
     ...payload
